@@ -1,62 +1,75 @@
 import cv2
 import tkinter as tk
+from PIL import Image, ImageTk
+
 
 class App:
     def __init__(self):
-        self.cap = cv2.VideoCapture(0)
-
         self.root = tk.Tk()
         self.root.title("Video Cropper")
-
-# Creating a canvas with the width and height of the video frame.
-        self.canvas = tk.Canvas(self.root, width=self.cap.get(cv2.CAP_PROP_FRAME_WIDTH),
-                                height=self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        self.video_capture = cv2.VideoCapture(0)
+        self.canvas = tk.Canvas(self.root, width=self.video_capture.get(cv2.CAP_PROP_FRAME_WIDTH),
+                                height=self.video_capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
         self.canvas.pack()
-
+        self.crop_button = tk.Button(
+            self.root, text="Crop", command=self.crop_video)
+        self.crop_button.pack()
         self.rect = None
         self.start_x = None
         self.start_y = None
+        self.end_x = None
+        self.end_y = None
+        self.root.bind("<Button-1>", self.start_crop)
+        self.root.bind("<ButtonRelease-1>", self.stop_crop)
+        self.root.bind("<B1-Motion>", self.draw_crop_rect)
+        self.current_frame = None
+        self.update()
 
-        self.canvas.bind("<ButtonPress-1>", self.on_button_press)
-        self.canvas.bind("<B1-Motion>", self.on_move_press)
-        self.canvas.bind("<ButtonRelease-1>", self.on_button_release)
+    def update(self):
+        ret, frame = self.video_capture.read()
+        if ret:
+            self.current_frame = frame  # update current frame
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            self.photo = ImageTk.PhotoImage(image=Image.fromarray(frame))
+            self.canvas.create_image(0, 0, anchor=tk.NW, image=self.photo)
+        self.root.after(15, self.update)
 
-        self.root.bind("<Escape>", lambda event: self.root.quit())
+    def start_crop(self, event):
+        self.start_x = self.canvas.canvasx(event.x)
+        self.start_y = self.canvas.canvasy(event.y)
+        if self.rect:
+            self.canvas.delete(self.rect)
+        self.rect = self.canvas.create_rectangle(
+            self.start_x, self.start_y, self.start_x, self.start_y, outline="red")
 
-    def on_button_press(self, event):
-        self.start_x = event.x
-        self.start_y = event.y
-        self.rect = self.canvas.create_rectangle(self.start_x, self.start_y, 1, 1, outline='red')
+    def stop_crop(self, event):
+        self.end_x = self.canvas.canvasx(event.x)
+        self.end_y = self.canvas.canvasy(event.y)
 
-    def on_move_press(self, event):
-        curX, curY = (event.x, event.y)
-        self.canvas.coords(self.rect, self.start_x, self.start_y, curX, curY)
+    def draw_crop_rect(self, event):
+        self.end_x = self.canvas.canvasx(event.x)
+        self.end_y = self.canvas.canvasy(event.y)
+        self.canvas.coords(self.rect, self.start_x,
+                           self.start_y, self.end_x, self.end_y)
 
-    def on_button_release(self, event):
-        # Get the current frame
-        ret, frame = self.cap.read()
+    def crop_video(self):
+        if self.start_x is None or self.start_y is None or self.end_x is None or self.end_y is None:
+            # If the crop values have not been set, do nothing
+            return
 
-        # Get the coordinates of the rectangle
-        x1, y1, x2, y2 = self.canvas.coords(self.rect)
-
-        # Crop the frame to the region of interest
-        cropped_frame = frame[int(y1):int(y2), int(x1):int(x2)]
+        # Crop the current frame using the selected region
+        cropped_frame = self.current_frame[int(self.start_y):int(self.end_y),
+                                           int(self.start_x):int(self.end_x), :]
 
         # Save the cropped frame as an image file
-        cv2.imwrite("cropped_frame.png", cropped_frame)
+        if cropped_frame.size > 0:
+            cv2.imwrite("cropped_frame.jpg", cropped_frame)
+            print("Saved cropped frame as 'cropped_frame.jpg'")
 
     def run(self):
-        while True:
-            ret, frame = self.cap.read()
-            if not ret:
-                break
+        self.root.mainloop()
 
-            self.canvas.create_image(0, 0, anchor=tk.NW, image=cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-            self.root.update()
 
-        self.cap.release()
-        cv2.destroyAllWindows()
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     app = App()
     app.run()
